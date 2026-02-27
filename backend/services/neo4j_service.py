@@ -216,10 +216,11 @@ async def get_recent_threats(limit: int = 20) -> list[dict]:
     async with driver.session() as session:
         result = await session.run(
             """MATCH (e)<-[:CONTAINS]-(r:ScamReport)
-            WHERE e.reportCount > 1
+            WITH e, count(DISTINCT r) as reports
+            WHERE reports >= 1
             RETURN e.value as entity, labels(e)[0] as entityType,
-                   e.reportCount as reports, e.firstSeen as firstSeen
-            ORDER BY e.reportCount DESC
+                   reports, e.firstSeen as firstSeen
+            ORDER BY reports DESC
             LIMIT $limit""",
             limit=limit,
         )

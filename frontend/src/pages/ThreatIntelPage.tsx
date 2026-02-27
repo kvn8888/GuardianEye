@@ -20,7 +20,7 @@ const ThreatIntelPage = () => {
     getRecentThreats().then(({ threats }) => {
       if (threats.length > 0) {
         setFeed(adaptThreatsToFeed(threats));
-        const highCount = threats.filter((t) => t.reports > 10).length;
+        const highCount = threats.filter((t) => t.reports >= 3).length;
         setStats({
           threats: String(threats.length),
           numbers: String(threats.filter((t) => t.entityType === "PhoneNumber").length),
