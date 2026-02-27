@@ -33,4 +33,4 @@ services:
     routes:
       - type: rewrite
         source: /api/*
-        destination: https://guardianeye-api.onrender.com/api/*
+        destination: https://guardianeye-pjie.onrender.com/api/*
