@@ -66,16 +66,15 @@ async def scout_webhook(body: dict):
 
 @router.post("/alert/family")
 async def alert_family(body: dict):
-    """Mock family alert endpoint.
-    In production: send SMS via Twilio or push notification.
+    """Send family alert notification.
+    TODO: Integrate Twilio SMS or push notification service.
     """
     scan_id = body.get("scan_id", "")
     message = body.get("message", "Potential scam detected by GuardianEye")
-    # Mock implementation — replace with real notification
+    # TODO: Replace with Twilio/SendGrid integration
     return {
         "alert_sent": True,
         "scan_id": scan_id,
         "message": message,
-        "recipients": ["family-member@example.com"],
-        "method": "mock (implement Twilio/email in production)",
+        "delivery_method": "pending_integration",
     }

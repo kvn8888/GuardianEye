@@ -19,7 +19,7 @@ FASTINO_API_URL = "https://api.pioneer.ai/gliner-2"
 async def extract_scam_entities(text: str) -> dict:
     """Extract structured scam-related entities from text using GLiNER."""
     if not FASTINO_API_KEY:
-        return _mock_entities(text)
+        return _regex_fallback_entities(text)
 
     labels = [
         "phone_number", "url", "company_name", "dollar_amount",
@@ -41,7 +41,7 @@ async def extract_scam_entities(text: str) -> dict:
         )
         if resp.status_code != 200:
             print(f"⚠  GLiNER API error {resp.status_code}: {resp.text}")
-            return _mock_entities(text)
+            return _regex_fallback_entities(text)
 
         raw = resp.json()
         # Pioneer returns: {"result": {"entities": {"label": ["val", ...]}}, "token_usage": N}
@@ -134,8 +134,8 @@ def _normalize_pioneer_response(raw: dict) -> dict:
     }
 
 
-def _mock_entities(text: str) -> dict:
-    """Basic regex fallback when GLiNER API is unavailable."""
+def _regex_fallback_entities(text: str) -> dict:
+    """Regex-based entity extraction when GLiNER API is unavailable."""
     import re
 
     entities = []
