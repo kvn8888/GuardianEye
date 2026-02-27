@@ -1,0 +1,12 @@
+fastapi>=0.115
+uvicorn[standard]>=0.34
+python-dotenv>=1.0
+httpx>=0.27
+pydantic>=2.0
+sse-starlette>=2.0
+neo4j>=5.0
+openai>=1.0
+yutori>=0.4
+reka-api>=3.0
+tavily-python>=0.5
+python-multipart>=0.0.9
