@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { mockNetworkNodes, type NetworkNode } from "@/data/mockData";
+import type { NetworkNode } from "@/data/mockData";
 import { getEntityNetwork } from "@/api/client";
 import { adaptGraphToNodes } from "@/api/adapters";
 
@@ -25,9 +25,7 @@ const NetworkPage = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [searchParams] = useSearchParams();
   const entityParam = searchParams.get("entity");
-  const [nodes, setNodes] = useState<NetworkNode[]>(() =>
-    mockNetworkNodes.map((n) => ({ ...n }))
-  );
+  const [nodes, setNodes] = useState<NetworkNode[]>([]);
   const [selectedNode, setSelectedNode] = useState<NetworkNode | null>(null);
   const [totalReports, setTotalReports] = useState(0);
   const nodesRef = useRef(nodes);

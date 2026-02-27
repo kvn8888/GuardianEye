@@ -1,10 +1,10 @@
 import Layout from "@/components/Layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Camera, Mic, FileText, ChevronRight, Loader } from "lucide-react";
+import { Camera, Mic, FileText, ChevronRight, Loader, ShieldOff } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { mockScans, type ScanResult } from "@/data/mockData";
+import type { ScanResult } from "@/data/mockData";
 import { listScans } from "@/api/client";
 import { adaptScanResult } from "@/api/adapters";
 
@@ -20,7 +20,7 @@ const verdictLabel = { scam: "Scam", caution: "Caution", safe: "Safe" };
 
 const MyScansPage = () => {
   const navigate = useNavigate();
-  const [scans, setScans] = useState<ScanResult[]>(mockScans);
+  const [scans, setScans] = useState<ScanResult[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -29,7 +29,7 @@ const MyScansPage = () => {
         const adapted = results
           .filter((r) => r.verdict) // only completed scans
           .map(adaptScanResult);
-        setScans(adapted.length > 0 ? adapted : mockScans);
+        setScans(adapted);
       }
       setLoading(false);
     });
@@ -47,6 +47,14 @@ const MyScansPage = () => {
           {loading ? (
             <div className="flex justify-center py-12">
               <Loader className="animate-spin text-primary" size={28} />
+            </div>
+          ) : scans.length === 0 ? (
+            <div className="text-center py-16">
+              <ShieldOff size={48} className="mx-auto text-muted-foreground mb-4" />
+              <p className="text-lg font-semibold text-foreground mb-2">No scans yet</p>
+              <p className="text-muted-foreground">
+                Submit a screenshot, voice recording, or text message to get started.
+              </p>
             </div>
           ) : (
           scans.map((scan) => {

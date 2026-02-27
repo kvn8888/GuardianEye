@@ -3,15 +3,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Shield, Phone, Globe, Network, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { mockThreatFeed, scamTrendData, type ThreatFeedItem } from "@/data/mockData";
+import { scamTrendData, type ThreatFeedItem } from "@/data/mockData";
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell, Tooltip } from "recharts";
 import { useState, useEffect } from "react";
 import { getRecentThreats, getScoutStatus, createScout } from "@/api/client";
 import { adaptThreatsToFeed } from "@/api/adapters";
 
 const ThreatIntelPage = () => {
-  const [feed, setFeed] = useState<ThreatFeedItem[]>(mockThreatFeed);
-  const [stats, setStats] = useState({ threats: "47", numbers: "12", sites: "3", networks: "23" });
+  const [feed, setFeed] = useState<ThreatFeedItem[]>([]);
+  const [stats, setStats] = useState({ threats: "0", numbers: "0", sites: "0", networks: "0" });
   const [scoutCount, setScoutCount] = useState(0);
   const [creating, setCreating] = useState(false);
 

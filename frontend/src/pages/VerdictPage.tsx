@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, CheckCircle, AlertCircle, Bell, Network, Phone, Loader } from "lucide-react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { mockScans, type ScanResult } from "@/data/mockData";
+import type { ScanResult } from "@/data/mockData";
 import { getScanVerdict, alertFamily } from "@/api/client";
 import { adaptScanResult } from "@/api/adapters";
 
@@ -20,14 +20,10 @@ const VerdictPage = () => {
   useEffect(() => {
     if (!id) return;
 
-    // Try real API first, fall back to mock
+    // Try real API first
     getScanVerdict(id).then((result) => {
       if (result && result.verdict) {
         setScan(adaptScanResult(result));
-      } else {
-        // Fall back to mock data
-        const mock = mockScans.find((s) => s.id === id) || mockScans[0];
-        setScan(mock);
       }
       setLoading(false);
     });

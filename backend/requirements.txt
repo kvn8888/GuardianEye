@@ -10,3 +10,4 @@ yutori>=0.4
 reka-api>=3.0
 tavily-python>=0.5
 python-multipart>=0.0.9
+libsql-experimental>=0.0.49

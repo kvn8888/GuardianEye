@@ -167,6 +167,9 @@ async def _run_image_pipeline(scan_id: str, image_url: str, content_hash: str | 
     _scans[scan_id] = final_result
     _emit(scan_id, "complete", {"scan_id": scan_id})
 
+    # Persist to DB
+    cache_service.save_scan(scan_id, "image", final_result)
+
     # Cache the result
     if content_hash:
         cache_service.store_result(
@@ -277,6 +280,9 @@ async def _run_voice_pipeline(scan_id: str, audio_path: str, content_hash: str |
     _scans[scan_id] = final_result
     _emit(scan_id, "complete", {"scan_id": scan_id})
 
+    # Persist to DB
+    cache_service.save_scan(scan_id, "voice", final_result)
+
     # Cache the result
     if content_hash:
         cache_service.store_result(
@@ -367,6 +373,9 @@ async def _run_text_pipeline(scan_id: str, text: str, content_hash: str | None =
     _scans[scan_id] = final_result
     _emit(scan_id, "complete", {"scan_id": scan_id})
 
+    # Persist to DB
+    cache_service.save_scan(scan_id, "text", final_result)
+
     # Cache the result
     if content_hash:
         cache_service.store_result(
@@ -401,7 +410,12 @@ async def scan_status_stream(scan_id: str):
 @router.get("/scan/{scan_id}/verdict")
 async def scan_verdict(scan_id: str):
     """Get the full verdict for a completed scan."""
+    from services import cache_service
+
     scan = _scans.get(scan_id)
+    if not scan:
+        # Check persistent storage
+        scan = cache_service.get_scan(scan_id)
     if not scan:
         raise HTTPException(404, "Scan not found")
     return scan
@@ -411,9 +425,14 @@ async def scan_verdict(scan_id: str):
 
 @router.get("/scans")
 async def list_scans():
-    """List all scans (completed and in-progress)."""
+    """List all scans (completed and in-progress). Merges in-memory + persisted."""
+    from services import cache_service
+
+    # Start with in-memory scans (includes in-progress ones)
+    seen_ids = set()
     scans = []
     for scan_id, data in _scans.items():
+        seen_ids.add(scan_id)
         scans.append({
             "scan_id": scan_id,
             "status": data.get("status", "unknown"),
@@ -423,6 +442,21 @@ async def list_scans():
             "visual": data.get("visual"),
             "voice": data.get("voice"),
         })
+
+    # Add persisted scans not already in memory
+    for saved in cache_service.list_saved_scans():
+        sid = saved.get("scan_id", "")
+        if sid and sid not in seen_ids:
+            scans.append({
+                "scan_id": sid,
+                "status": saved.get("status", "complete"),
+                "type": saved.get("type", "unknown"),
+                "verdict": saved.get("verdict"),
+                "entities": saved.get("entities", []),
+                "visual": saved.get("visual"),
+                "voice": saved.get("voice"),
+            })
+
     # Most recent first
     scans.reverse()
     return {"scans": scans}

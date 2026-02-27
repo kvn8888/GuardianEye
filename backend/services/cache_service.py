@@ -72,6 +72,19 @@ def _create_tables(conn):
         CREATE INDEX IF NOT EXISTS idx_cache_type
         ON scan_cache(scan_type, created_at DESC)
     """)
+    # Scan persistence — survives server restarts
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS completed_scans (
+            scan_id TEXT PRIMARY KEY,
+            scan_type TEXT NOT NULL,
+            result JSON NOT NULL,
+            created_at REAL NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_scans_created
+        ON completed_scans(created_at DESC)
+    """)
     conn.commit()
 
 
@@ -176,3 +189,49 @@ def clear_cache() -> int:
     conn.execute("DELETE FROM scan_cache")
     conn.commit()
     return count
+
+
+# ── Scan Persistence ─────────────────────────────────────────
+
+def save_scan(scan_id: str, scan_type: str, result: dict) -> None:
+    """Persist a completed scan so it survives server restarts."""
+    conn = _get_conn()
+    conn.execute(
+        """INSERT OR REPLACE INTO completed_scans
+           (scan_id, scan_type, result, created_at) VALUES (?, ?, ?, ?)""",
+        (scan_id, scan_type, json.dumps(result), time.time()),
+    )
+    conn.commit()
+    if HAS_LIBSQL and os.getenv("TURSO_DATABASE_URL"):
+        try:
+            conn.sync()
+        except Exception:
+            pass
+
+
+def get_scan(scan_id: str) -> Optional[dict]:
+    """Load a scan from the persistence layer."""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT result FROM completed_scans WHERE scan_id = ?",
+        (scan_id,),
+    ).fetchone()
+    if not row:
+        return None
+    return json.loads(row[0])
+
+
+def list_saved_scans(limit: int = 50) -> list[dict]:
+    """List all persisted scans, most recent first."""
+    conn = _get_conn()
+    rows = conn.execute(
+        "SELECT scan_id, scan_type, result, created_at FROM completed_scans ORDER BY created_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    scans = []
+    for row in rows:
+        result = json.loads(row[2])
+        result["scan_id"] = row[0]
+        result["type"] = row[1]
+        scans.append(result)
+    return scans
