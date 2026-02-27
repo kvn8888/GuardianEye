@@ -16,10 +16,8 @@ from routes.scout import router as scout_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    required = ["OPENAI_API_KEY"]
-    missing = [k for k in required if not os.getenv(k)]
-    if missing:
-        print(f"⚠  Missing required: {', '.join(missing)}")
+    if not os.getenv("OPENAI_API_KEY"):
+        print("⚠  OpenAI API key not set — fallback LLM disabled")
 
     services = {
         "Reka Vision": bool(os.getenv("REKA_API_KEY")),
@@ -43,6 +41,7 @@ app.include_router(graph_router, prefix="/api")
 app.include_router(scout_router, prefix="/api")
 
 
+@app.get("/")
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "guardianeye"}
