@@ -41,7 +41,7 @@ def _to_image_url(image_path_or_url: str) -> str:
     return f"data:{mime};base64,{b64}"
 
 
-def Cauanalyze_screenshot(image_url: str) -> dict:
+def analyze_screenshot(image_url: str) -> dict:
     """Analyze a screenshot for scam indicators. Tries Reka Vision, falls back to Gemini."""
     import concurrent.futures
 
