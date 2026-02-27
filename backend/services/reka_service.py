@@ -1,13 +1,7 @@
-"""Reka Vision — Screenshot scam analysis.
+"""Reka Vision — Screenshot scam analysis (Gemini 3 Flash fallback).
 
-VALIDATED SDK (v3.2.0):
-  pip install reka-api
-  from reka.client import Reka
-  from reka import ChatMessage
-  response.responses[0].message (NOT .message.content)
-  model: "reka-flash"
-  image_url must be a fetchable URL or data:image/...;base64,... URI
-  Local file paths DO NOT work — must convert to base64 first.
+Primary: Reka Flash for visual phishing analysis.
+Fallback: Gemini 3 Flash multimodal vision when Reka is unavailable.
 """
 import os
 import json
@@ -47,27 +41,24 @@ def _to_image_url(image_path_or_url: str) -> str:
     return f"data:{mime};base64,{b64}"
 
 
-def analyze_screenshot(image_url: str) -> dict:
-    """Analyze a screenshot for scam indicators using Reka Vision."""
+def Cauanalyze_screenshot(image_url: str) -> dict:
+    """Analyze a screenshot for scam indicators. Tries Reka Vision, falls back to Gemini."""
     client = _get_client()
-    if not client:
-        raise RuntimeError("REKA_API_KEY not configured")
+    if client:
+        try:
+            return _analyze_with_reka(client, image_url)
+        except Exception as e:
+            print(f"⚠  Reka Vision failed: {e}, falling back to Gemini")
 
-    # Convert local file paths to base64 data URIs
-    resolved_url = _to_image_url(image_url)
+    # Fallback to Gemini 3 Flash vision
+    return _analyze_with_gemini(image_url)
 
-    response = client.chat.create(
-        model="reka-flash",
-        messages=[
-            ChatMessage(
-                role="user",
-                content=[
-                    {"type": "image_url", "image_url": resolved_url},
-                    {
-                        "type": "text",
-                        "text": """Analyze this screenshot for scam/phishing indicators.
 
-Return JSON with these fields:
+# ── Prompt shared by both engines ───────────────────────────
+
+_VISION_PROMPT = """Analyze this screenshot for scam/phishing indicators.
+
+Return ONLY valid JSON (no markdown, no code fences):
 {
   "logos_detected": [{"brand": "...", "looks_legitimate": true/false, "reasoning": "..."}],
   "urls_visible": ["..."],
@@ -83,24 +74,16 @@ Return JSON with these fields:
 }
 
 If this is not a screenshot of a message/email/website, return scam_confidence: 0."""
-                    }
-                ],
-            )
-        ],
-    )
 
-    raw_msg = response.responses[0].message
-    # SDK v3.2.0: .message is a ChatMessage object, text is in .content
-    raw = raw_msg.content if hasattr(raw_msg, "content") else str(raw_msg)
-    # Try to parse JSON from the response
+
+def _parse_vision_response(raw: str) -> dict:
+    """Parse JSON from a vision model response, stripping code fences if present."""
     try:
-        # Strip markdown code fences if present
         text = raw.strip()
         if text.startswith("```"):
             text = text.split("\n", 1)[1]
             if text.endswith("```"):
                 text = text[:-3]
-            # Also handle ```json ... ```
             if text.strip().startswith("json"):
                 text = text.strip()[4:]
         return json.loads(text.strip())
@@ -111,3 +94,80 @@ If this is not a screenshot of a message/email/website, return scam_confidence: 
             "red_flags": [],
             "text_content": raw,
         }
+
+
+# ── Reka Vision (primary) ──────────────────────────────────
+
+def _analyze_with_reka(client: Reka, image_url: str) -> dict:
+    """Primary: Reka Flash vision analysis."""
+    resolved_url = _to_image_url(image_url)
+
+    response = client.chat.create(
+        model="reka-flash",
+        messages=[
+            ChatMessage(
+                role="user",
+                content=[
+                    {"type": "image_url", "image_url": resolved_url},
+                    {"type": "text", "text": _VISION_PROMPT},
+                ],
+            )
+        ],
+    )
+
+    raw_msg = response.responses[0].message
+    raw = raw_msg.content if hasattr(raw_msg, "content") else str(raw_msg)
+    result = _parse_vision_response(raw)
+    result["analyzed_by"] = "reka-flash"
+    return result
+
+
+# ── Gemini 3 Flash Vision (fallback) ───────────────────────
+
+def _analyze_with_gemini(image_url: str) -> dict:
+    """Fallback: Gemini 3 Flash multimodal vision analysis."""
+    from google import genai
+
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_key:
+        raise RuntimeError("Neither REKA_API_KEY nor GEMINI_API_KEY configured for vision")
+
+    client = genai.Client(api_key=gemini_key)
+
+    # Build content parts — upload file or use URL
+    if image_url.startswith(("http://", "https://")):
+        # Remote URL — pass inline
+        parts = [
+            {"inline_data": {"mime_type": "image/png", "data": _url_to_base64(image_url)}},
+            _VISION_PROMPT,
+        ]
+    elif image_url.startswith("data:"):
+        # Already a data URI — extract base64
+        mime, b64 = image_url.split(";base64,", 1)
+        mime_type = mime.replace("data:", "")
+        parts = [
+            {"inline_data": {"mime_type": mime_type, "data": b64}},
+            _VISION_PROMPT,
+        ]
+    else:
+        # Local file — upload
+        uploaded = client.files.upload(file=image_url)
+        parts = [uploaded, _VISION_PROMPT]
+
+    response = client.models.generate_content(
+        model="gemini-3-flash-preview",
+        contents=parts,
+        config={"response_mime_type": "application/json"},
+    )
+
+    result = _parse_vision_response(response.text)
+    result["analyzed_by"] = "gemini-flash-fallback"
+    return result
+
+
+def _url_to_base64(url: str) -> str:
+    """Fetch a URL and return its content as base64."""
+    import httpx
+    resp = httpx.get(url, timeout=30)
+    resp.raise_for_status()
+    return base64.b64encode(resp.content).decode()
