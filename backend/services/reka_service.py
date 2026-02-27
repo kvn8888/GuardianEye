@@ -43,12 +43,20 @@ def _to_image_url(image_path_or_url: str) -> str:
 
 def Cauanalyze_screenshot(image_url: str) -> dict:
     """Analyze a screenshot for scam indicators. Tries Reka Vision, falls back to Gemini."""
+    import concurrent.futures
+
     client = _get_client()
     if client:
-        try:
-            return _analyze_with_reka(client, image_url)
-        except Exception as e:
-            print(f"⚠  Reka Vision failed: {e}, falling back to Gemini")
+        # Give Reka 15 seconds max, then switch to Gemini
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(_analyze_with_reka, client, image_url)
+            try:
+                return future.result(timeout=15)
+            except concurrent.futures.TimeoutError:
+                future.cancel()
+                print("⚠  Reka Vision timed out after 15s, falling back to Gemini")
+            except Exception as e:
+                print(f"⚠  Reka Vision failed: {e}, falling back to Gemini")
 
     # Fallback to Gemini 3 Flash vision
     return _analyze_with_gemini(image_url)
