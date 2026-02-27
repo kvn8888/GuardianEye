@@ -32,6 +32,26 @@ async def lifespan(app: FastAPI):
     }
     active = [k for k, v in services.items() if v]
     print(f"✓ Active services: {', '.join(active) or 'none'}")
+
+    # Seed Neo4j with demo data if empty
+    try:
+        from seed_data import seed_neo4j
+        await seed_neo4j()
+    except Exception as e:
+        print(f"⚠  Neo4j seed: {e}")
+
+    # Auto-start Yutori scouts for autonomous monitoring
+    try:
+        from services.yutori_service import create_scam_scout, list_active_scouts
+        existing = list_active_scouts()
+        if len(existing) == 0 and os.getenv("YUTORI_API_KEY"):
+            create_scam_scout()
+            print("✓ Yutori scout auto-deployed for threat monitoring")
+        elif len(existing) > 0:
+            print(f"✓ Yutori: {len(existing)} scout(s) already active")
+    except Exception as e:
+        print(f"⚠  Yutori scout auto-start: {e}")
+
     yield
     from services.neo4j_service import close_driver
     close_driver()

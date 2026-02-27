@@ -106,7 +106,7 @@ async def scan_image(
 
 async def _run_image_pipeline(scan_id: str, image_url: str, content_hash: str | None = None):
     """Full image scan pipeline: Reka → GLiNER → Tavily → Yutori → verdict."""
-    from services import reka_service, gliner_service, tavily_service, yutori_service, openai_service, neo4j_service, cache_service
+    from services import reka_service, gliner_service, tavily_service, yutori_service, verdict_service, neo4j_service, cache_service
 
     # Step 1: Reka Vision analysis
     _emit(scan_id, "step", {"step": "reka_vision", "status": "running"})
@@ -136,10 +136,10 @@ async def _run_image_pipeline(scan_id: str, image_url: str, content_hash: str | 
         yutori_results = []
     _emit(scan_id, "yutori_complete", {"results": yutori_results})
 
-    # Step 5: OpenAI verdict synthesis
+    # Step 5: Gemini verdict synthesis
     _emit(scan_id, "step", {"step": "verdict", "status": "running"})
     verdict = await asyncio.to_thread(
-        openai_service.synthesize_verdict,
+        verdict_service.synthesize_verdict,
         visual_analysis=visual,
         entities=entities,
         tavily_results=tavily_results,
@@ -223,7 +223,7 @@ async def scan_voice(
 
 async def _run_voice_pipeline(scan_id: str, audio_path: str, content_hash: str | None = None):
     """Full voice scan pipeline: Modulate → GLiNER → Tavily → Yutori → verdict."""
-    from services import modulate_service, gliner_service, tavily_service, yutori_service, openai_service, neo4j_service, cache_service
+    from services import modulate_service, gliner_service, tavily_service, yutori_service, verdict_service, neo4j_service, cache_service
 
     # Step 1: Modulate/fallback voice analysis
     _emit(scan_id, "step", {"step": "voice_analysis", "status": "running"})
@@ -256,7 +256,7 @@ async def _run_voice_pipeline(scan_id: str, audio_path: str, content_hash: str |
     # Step 5: Verdict
     _emit(scan_id, "step", {"step": "verdict", "status": "running"})
     verdict = await asyncio.to_thread(
-        openai_service.synthesize_verdict,
+        verdict_service.synthesize_verdict,
         voice_analysis=voice,
         entities=entities,
         tavily_results=tavily_results,
@@ -324,7 +324,7 @@ async def scan_text(body: dict):
 
 async def _run_text_pipeline(scan_id: str, text: str, content_hash: str | None = None):
     """Text-only pipeline: GLiNER → classify → Tavily → Yutori → verdict."""
-    from services import gliner_service, tavily_service, yutori_service, openai_service, neo4j_service, cache_service
+    from services import gliner_service, tavily_service, yutori_service, verdict_service, neo4j_service, cache_service
 
     # Step 1: GLiNER extraction + classification in parallel
     _emit(scan_id, "step", {"step": "gliner_extract", "status": "running"})
@@ -351,7 +351,7 @@ async def _run_text_pipeline(scan_id: str, text: str, content_hash: str | None =
     # Step 4: Verdict
     _emit(scan_id, "step", {"step": "verdict", "status": "running"})
     verdict = await asyncio.to_thread(
-        openai_service.synthesize_verdict,
+        verdict_service.synthesize_verdict,
         entities=entities,
         tavily_results=tavily_results,
         yutori_results=yutori_results,

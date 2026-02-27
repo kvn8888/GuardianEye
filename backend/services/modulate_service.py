@@ -8,12 +8,11 @@ VALIDATED against public Modulate developer docs (Feb 2026):
   - Response: { text, duration_ms, utterances[{ text, start_ms, duration_ms, speaker, emotion, accent }] }
   - Supported: AAC, AIFF, FLAC, MP3, MP4, MOV, OGG, Opus, WAV, WebM (up to 100MB)
   - Also has streaming via WebSocket: /api/velma-2-stt-streaming?api_key=KEY
-  - Fallback: OpenAI Whisper transcription + GPT-4o sentiment analysis
+  - Fallback: Gemini 3 Flash audio analysis
 """
 import os
 import json
 import httpx
-from openai import OpenAI
 
 
 # ── Modulate Velma-2 API ────────────────────────────────────
@@ -121,70 +120,58 @@ def _parse_velma_response(raw: dict) -> dict:
     }
 
 
-# ── OpenAI Fallback (guaranteed to work) ────────────────────
+# ── Gemini Fallback ─────────────────────────────────────────
 
 def analyze_voice_fallback(audio_path: str) -> dict:
-    """Fallback: Whisper transcription + GPT-4o scam/pressure analysis.
-    Use this if Modulate API access is not available.
+    """Fallback: Gemini 3 Flash multimodal audio analysis.
+    Transcribes and analyzes audio for scam indicators.
     """
-    openai_key = os.getenv("OPENAI_API_KEY")
-    if not openai_key:
-        raise RuntimeError("Neither MODULATE_API_KEY nor OPENAI_API_KEY configured")
+    from google import genai
 
-    client = OpenAI(api_key=openai_key)
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_key:
+        raise RuntimeError("Neither MODULATE_API_KEY nor GEMINI_API_KEY configured")
 
-    # Step 1: Transcribe with Whisper
-    with open(audio_path, "rb") as f:
-        transcript_resp = client.audio.transcriptions.create(
-            model="whisper-1", file=f
-        )
-    transcript = transcript_resp.text
+    client = genai.Client(api_key=gemini_key)
 
-    # Step 2: Analyze transcript for scam signals
-    analysis_resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": "You are an expert fraud analyst. Analyze phone call transcripts for scam indicators.",
-            },
-            {
-                "role": "user",
-                "content": f"""Analyze this phone call transcript for scam indicators:
+    # Upload audio file to Gemini
+    uploaded = client.files.upload(file=audio_path)
 
-"{transcript}"
+    # Analyze with Gemini 3 Flash (multimodal — handles audio natively)
+    response = client.models.generate_content(
+        model="gemini-3-flash-preview",
+        contents=[
+            uploaded,
+            """Transcribe this audio and analyze it for phone scam indicators.
 
-Return JSON:
-{{
-  "transcript": "...",
+Return ONLY valid JSON (no markdown, no code fences):
+{
+  "transcript": "full transcription of the audio",
   "fraud_score": 0-100,
-  "emotion_profile": {{"urgency": 0-100, "fear": 0-100, "authority": 0-100, "friendliness": 0-100}},
+  "emotion_profile": {"urgency": 0-100, "fear": 0-100, "authority": 0-100, "friendliness": 0-100},
   "pressure_tactics": ["creating artificial urgency", "impersonating authority"],
   "deepfake_detected": false,
   "scam_type": "tech_support" | "irs" | "bank_fraud" | "romance" | "prize" | "unknown",
   "red_flags": ["caller demanded immediate payment", "threatened arrest"],
-  "scripted_speech_detected": true/false,
-  "analyzed_by": "openai-fallback"
-}}""",
-            },
+  "scripted_speech_detected": true or false
+}""",
         ],
-        response_format={"type": "json_object"},
+        config={"response_mime_type": "application/json"},
     )
 
-    raw = analysis_resp.choices[0].message.content
+    raw = response.text
     try:
         result = json.loads(raw)
-        result["transcript"] = transcript
-        result["analyzed_by"] = "openai-fallback"
+        result["analyzed_by"] = "gemini-fallback"
         return result
     except json.JSONDecodeError:
         return {
-            "transcript": transcript,
+            "transcript": raw,
             "fraud_score": 0,
             "emotion_profile": {},
             "pressure_tactics": [],
             "deepfake_detected": False,
-            "analyzed_by": "openai-fallback",
+            "analyzed_by": "gemini-fallback",
             "raw_analysis": raw,
         }
 
@@ -192,12 +179,12 @@ Return JSON:
 # ── Unified entry point ────────────────────────────────────
 
 async def analyze_voice(audio_path: str) -> dict:
-    """Try Modulate first, fall back to OpenAI Whisper + GPT-4o."""
+    """Try Modulate first, fall back to Gemini 3 Flash."""
     if MODULATE_API_KEY:
         try:
             return await analyze_voice_modulate(audio_path)
         except Exception as e:
-            print(f"⚠  Modulate failed: {e}, falling back to OpenAI")
+            print(f"⚠  Modulate failed: {e}, falling back to Gemini")
 
     # Run sync fallback in thread
     import asyncio
