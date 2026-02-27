@@ -81,6 +81,7 @@ async def scan_image(
     # Compute content hash for caching
     content_hash = None
     url = image_url
+    is_temp_upload = False
     if image and not url:
         image_bytes = await image.read()
         content_hash = cache_service.hash_image_bytes(image_bytes)
@@ -88,6 +89,7 @@ async def scan_image(
         tmp.write(image_bytes)
         tmp.close()
         url = tmp.name
+        is_temp_upload = True
     elif image_url:
         content_hash = cache_service.hash_text(image_url)
 
@@ -99,14 +101,19 @@ async def scan_image(
             return ScanOut(scan_id=scan_id, status="processing")
 
     # Fire pipeline in background
-    asyncio.create_task(_run_image_pipeline(scan_id, url or "", content_hash))
+    asyncio.create_task(_run_image_pipeline(scan_id, url or "", content_hash, is_temp_upload))
 
     return ScanOut(scan_id=scan_id, status="processing")
 
 
-async def _run_image_pipeline(scan_id: str, image_url: str, content_hash: str | None = None):
-    """Full image scan pipeline: Reka → GLiNER → Tavily → Yutori → verdict."""
-    from services import reka_service, gliner_service, tavily_service, yutori_service, verdict_service, neo4j_service, cache_service
+async def _run_image_pipeline(
+    scan_id: str,
+    image_url: str,
+    content_hash: str | None = None,
+    cleanup_temp_file: bool = False,
+):
+    """Fast image pipeline: Reka → GLiNER → Tavily → verdict, then background enrichment."""
+    from services import reka_service, gliner_service, tavily_service, verdict_service, cache_service
 
     # Step 1: Reka Vision analysis
     _emit(scan_id, "step", {"step": "reka_vision", "status": "running"})
@@ -128,41 +135,24 @@ async def _run_image_pipeline(scan_id: str, image_url: str, content_hash: str | 
     tavily_results = await tavily_service.check_all_entities(entities)
     _emit(scan_id, "tavily_complete", {"results": tavily_results})
 
-    # Step 4: Yutori deep research (slower, 30-60s)
-    _emit(scan_id, "step", {"step": "yutori_research", "status": "running"})
-    try:
-        yutori_results = await yutori_service.research_all_entities(entities)
-    except Exception:
-        yutori_results = []
-    _emit(scan_id, "yutori_complete", {"results": yutori_results})
-
-    # Step 5: Gemini verdict synthesis
+    # Step 4: Verdict synthesis
     _emit(scan_id, "step", {"step": "verdict", "status": "running"})
     verdict = await asyncio.to_thread(
         verdict_service.synthesize_verdict,
         visual_analysis=visual,
         entities=entities,
         tavily_results=tavily_results,
-        yutori_results=yutori_results,
         raw_text=text_content,
     )
     _emit(scan_id, "verdict", verdict)
 
-    # Step 6: Store in Neo4j
-    await neo4j_service.create_scan_report(scan_id, "image", verdict)
-    for ent in entities:
-        await neo4j_service.add_entity_to_scan(scan_id, ent.get("text", ""), ent.get("label", ""))
-    for tv in tavily_results:
-        for src in tv.get("sources", []):
-            await neo4j_service.add_evidence(scan_id, tv.get("entity", ""), {**src, "found_by": "tavily"})
-
-    # Done
     final_result = {
         "status": "complete",
         "type": "image",
         "verdict": verdict,
         "visual": visual,
         "entities": entities,
+        "research_status": "pending",
     }
     _scans[scan_id] = final_result
     _emit(scan_id, "complete", {"scan_id": scan_id})
@@ -177,6 +167,62 @@ async def _run_image_pipeline(scan_id: str, image_url: str, content_hash: str | 
             sse_events=_scan_events.get(scan_id),
             input_preview=image_url[:200],
         )
+
+    asyncio.create_task(
+        _enrich_image_scan(
+            scan_id,
+            entities,
+            tavily_results,
+            final_result,
+            content_hash,
+            image_url[:200],
+        )
+    )
+
+    # Cleanup temp file created for uploads after the fast path is done.
+    if cleanup_temp_file and os.path.exists(image_url):
+        os.unlink(image_url)
+
+
+async def _enrich_image_scan(
+    scan_id: str,
+    entities: list[dict],
+    tavily_results: list[dict],
+    final_result: dict,
+    content_hash: str | None = None,
+    input_preview: str = "",
+):
+    """Run slower post-verdict enrichment without blocking the user-visible completion."""
+    from services import yutori_service, neo4j_service, cache_service
+
+    try:
+        try:
+            yutori_results = await yutori_service.research_all_entities(entities)
+        except Exception:
+            yutori_results = []
+
+        final_result["yutori_results"] = yutori_results
+        final_result["research_status"] = "complete"
+        _scans[scan_id] = final_result
+
+        await neo4j_service.create_scan_report(scan_id, "image", final_result["verdict"])
+        for ent in entities:
+            await neo4j_service.add_entity_to_scan(scan_id, ent.get("text", ""), ent.get("label", ""))
+        for tv in tavily_results:
+            for src in tv.get("sources", []):
+                await neo4j_service.add_evidence(scan_id, tv.get("entity", ""), {**src, "found_by": "tavily"})
+
+        cache_service.save_scan(scan_id, "image", final_result)
+        if content_hash:
+            cache_service.store_result(
+                content_hash, "image", final_result,
+                sse_events=_scan_events.get(scan_id),
+                input_preview=input_preview,
+            )
+    except Exception as e:
+        final_result["research_status"] = "failed"
+        final_result["research_error"] = str(e)
+        _scans[scan_id] = final_result
 
 
 # ── POST /api/scan/voice ────────────────────────────────────

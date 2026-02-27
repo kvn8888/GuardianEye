@@ -20,13 +20,34 @@ const VerdictPage = () => {
   useEffect(() => {
     if (!id) return;
 
-    // Try real API first
-    getScanVerdict(id).then((result) => {
+    let cancelled = false;
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    const load = async () => {
+      const result = await getScanVerdict(id);
+      if (cancelled) return;
+
       if (result && result.verdict) {
         setScan(adaptScanResult(result));
+        setLoading(false);
+        return;
       }
+
+      attempts += 1;
+      if (attempts < maxAttempts) {
+        window.setTimeout(load, 600);
+        return;
+      }
+
       setLoading(false);
-    });
+    };
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   const handleAlertFamily = async () => {

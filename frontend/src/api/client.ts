@@ -5,6 +5,9 @@
  */
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
+const MAX_UPLOAD_IMAGE_BYTES = 1_500_000;
+const MAX_UPLOAD_IMAGE_DIMENSION = 1600;
+const UPLOAD_IMAGE_QUALITY = 0.82;
 
 // ── Types from the backend ─────────────────────────────────
 
@@ -49,9 +52,71 @@ export interface BackendThreat {
 
 // ── Scan Submission ────────────────────────────────────────
 
+async function optimizeImageForUpload(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+  if (file.type === "image/svg+xml") return file;
+
+  try {
+    const image = await loadImage(file);
+    const scale = Math.min(
+      1,
+      MAX_UPLOAD_IMAGE_DIMENSION / image.width,
+      MAX_UPLOAD_IMAGE_DIMENSION / image.height,
+    );
+
+    const needsResize = scale < 1;
+    const shouldReencode = needsResize || file.size > MAX_UPLOAD_IMAGE_BYTES;
+    if (!shouldReencode) return file;
+
+    const width = Math.max(1, Math.round(image.width * scale));
+    const height = Math.max(1, Math.round(image.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+
+    ctx.drawImage(image, 0, 0, width, height);
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, "image/jpeg", UPLOAD_IMAGE_QUALITY);
+    });
+
+    if (!blob) return file;
+    if (blob.size >= file.size && !needsResize) return file;
+
+    const name = file.name.replace(/\.[^.]+$/, "") || "upload";
+    return new File([blob], `${name}.jpg`, {
+      type: "image/jpeg",
+      lastModified: file.lastModified,
+    });
+  } catch {
+    return file;
+  }
+}
+
+function loadImage(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Image load failed"));
+    };
+    image.src = url;
+  });
+}
+
 export async function submitImageScan(file: File): Promise<{ scan_id: string }> {
+  const uploadFile = await optimizeImageForUpload(file);
   const fd = new FormData();
-  fd.append("image", file);
+  fd.append("image", uploadFile);
   const res = await fetch(`${API_BASE}/api/scan/image`, { method: "POST", body: fd });
   if (!res.ok) throw new Error(`Image scan failed: ${res.status}`);
   return res.json();

@@ -23,11 +23,13 @@ const Index = () => {
 
   const handleImageUpload = useCallback(async (file: File) => {
     setLoading("screenshot");
+    navigate("/analysis", { state: { type: "screenshot", uploadStage: "uploading" } });
     try {
       const { scan_id } = await submitImageScan(file);
-      navigate("/analysis", { state: { type: "screenshot", scanId: scan_id } });
+      navigate("/analysis", { replace: true, state: { type: "screenshot", scanId: scan_id } });
     } catch (err) {
       console.error(err);
+      navigate("/", { replace: true });
       setLoading(null);
     }
   }, [navigate]);

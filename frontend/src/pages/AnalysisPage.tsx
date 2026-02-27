@@ -27,11 +27,14 @@ const completionEvents: Record<string, number> = {
 const AnalysisPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const routeState = (location.state as any) || {};
   const [currentStep, setCurrentStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const [findings, setFindings] = useState<(string | null)[]>(new Array(analysisSteps.length).fill(null));
   const cleanupRef = useRef<(() => void) | null>(null);
-  const scanId = (location.state as any)?.scanId;
+  const scanId = routeState.scanId;
+  const uploadStage = routeState.uploadStage;
+  const isUploading = uploadStage === "uploading" && !scanId;
 
   useEffect(() => {
     if (!scanId) {
@@ -126,7 +129,7 @@ const AnalysisPage = () => {
 
   // Fallback: timer-based animation when no scanId (demo mode)
   useEffect(() => {
-    if (scanId) return; // SSE is handling it
+    if (scanId || isUploading) return; // SSE/upload state is handling it
 
     if (currentStep >= analysisSteps.length) {
       setTimeout(() => navigate(`/verdict/1`), 600);
@@ -149,9 +152,22 @@ const AnalysisPage = () => {
             <h2 className="text-center text-foreground mb-8">Analyzing Your Submission</h2>
 
             <div className="space-y-4">
+              {isUploading && (
+                <div className="flex items-start gap-4 p-4 rounded-xl bg-primary/5">
+                  <div className="mt-0.5 flex-shrink-0">
+                    <Loader size={24} className="text-destructive animate-spin-slow" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-foreground">Uploading Screenshot</p>
+                    <p className="text-sm text-muted-foreground">
+                      Sending your image to GuardianEye now. Analysis will begin as soon as the upload finishes.
+                    </p>
+                  </div>
+                </div>
+              )}
               {analysisSteps.map((step, i) => {
                 const isComplete = completedSteps.includes(i);
-                const isActive = currentStep === i;
+                const isActive = !isUploading && currentStep === i;
 
                 return (
                   <div
@@ -183,7 +199,9 @@ const AnalysisPage = () => {
             </div>
 
             <p className="text-center text-muted-foreground text-base mt-8">
-              This usually takes less than 30 seconds. We are working hard to keep you safe.
+              {isUploading
+                ? "Large screenshots can take a moment to prepare and upload before analysis starts."
+                : "Your first verdict should arrive quickly. Deeper background checks may continue after the result page opens."}
             </p>
           </CardContent>
         </Card>
