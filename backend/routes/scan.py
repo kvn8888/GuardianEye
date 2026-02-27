@@ -24,6 +24,43 @@ def _emit(scan_id: str, event_type: str, data: dict):
     _scan_events[scan_id].append({"event": event_type, "data": json.dumps(data)})
 
 
+async def _replay_cached(scan_id: str, cached: dict):
+    """Replay cached SSE events with staggered delays for animation."""
+    sse_events = cached.get("sse_events") or []
+    result = cached["result"]
+
+    # Timing: simulate the pipeline visually
+    step_delays = {
+        "scan_started": 0.1,
+        "step": 0.3,
+        "reka_complete": 0.8,
+        "gliner_complete": 0.6,
+        "voice_complete": 0.8,
+        "tavily_complete": 0.7,
+        "yutori_complete": 0.5,
+        "verdict": 0.4,
+        "complete": 0.2,
+    }
+
+    if sse_events:
+        # Replay the exact SSE events from the original run
+        for evt in sse_events:
+            delay = step_delays.get(evt.get("event", ""), 0.3)
+            await asyncio.sleep(delay)
+            _emit(scan_id, evt["event"], json.loads(evt["data"]) if isinstance(evt["data"], str) else evt["data"])
+    else:
+        # No stored events — just emit start + complete
+        _emit(scan_id, "scan_started", {"scan_id": scan_id, "type": result.get("type", "text"), "cached": True})
+        await asyncio.sleep(0.5)
+        if result.get("verdict"):
+            _emit(scan_id, "verdict", result["verdict"])
+        await asyncio.sleep(0.3)
+        _emit(scan_id, "complete", {"scan_id": scan_id, "cached": True})
+
+    # Store in memory
+    _scans[scan_id] = result
+
+
 # ── POST /api/scan/image ────────────────────────────────────
 
 @router.post("/scan/image", response_model=ScanOut)
@@ -32,6 +69,8 @@ async def scan_image(
     image_url: Optional[str] = Form(None),
 ):
     """Submit a screenshot for visual scam analysis. Accepts file upload or URL."""
+    from services import cache_service
+
     if not image and not image_url:
         raise HTTPException(400, "Provide image file or image_url")
 
@@ -39,23 +78,35 @@ async def scan_image(
     _scans[scan_id] = {"status": "processing", "type": "image"}
     _emit(scan_id, "scan_started", {"scan_id": scan_id, "type": "image"})
 
-    # If file uploaded, save to temp
+    # Compute content hash for caching
+    content_hash = None
     url = image_url
     if image and not url:
+        image_bytes = await image.read()
+        content_hash = cache_service.hash_image_bytes(image_bytes)
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(image.filename or ".png")[1])
-        tmp.write(await image.read())
+        tmp.write(image_bytes)
         tmp.close()
-        url = tmp.name  # local path — Reka may need a public URL
+        url = tmp.name
+    elif image_url:
+        content_hash = cache_service.hash_text(image_url)
+
+    # Check cache
+    if content_hash:
+        cached = cache_service.get_cached(content_hash)
+        if cached:
+            asyncio.create_task(_replay_cached(scan_id, cached))
+            return ScanOut(scan_id=scan_id, status="processing")
 
     # Fire pipeline in background
-    asyncio.create_task(_run_image_pipeline(scan_id, url or ""))
+    asyncio.create_task(_run_image_pipeline(scan_id, url or "", content_hash))
 
     return ScanOut(scan_id=scan_id, status="processing")
 
 
-async def _run_image_pipeline(scan_id: str, image_url: str):
+async def _run_image_pipeline(scan_id: str, image_url: str, content_hash: str | None = None):
     """Full image scan pipeline: Reka → GLiNER → Tavily → Yutori → verdict."""
-    from services import reka_service, gliner_service, tavily_service, yutori_service, openai_service, neo4j_service
+    from services import reka_service, gliner_service, tavily_service, yutori_service, openai_service, neo4j_service, cache_service
 
     # Step 1: Reka Vision analysis
     _emit(scan_id, "step", {"step": "reka_vision", "status": "running"})
@@ -106,14 +157,23 @@ async def _run_image_pipeline(scan_id: str, image_url: str):
             await neo4j_service.add_evidence(scan_id, tv.get("entity", ""), {**src, "found_by": "tavily"})
 
     # Done
-    _scans[scan_id] = {
+    final_result = {
         "status": "complete",
         "type": "image",
         "verdict": verdict,
         "visual": visual,
         "entities": entities,
     }
+    _scans[scan_id] = final_result
     _emit(scan_id, "complete", {"scan_id": scan_id})
+
+    # Cache the result
+    if content_hash:
+        cache_service.store_result(
+            content_hash, "image", final_result,
+            sse_events=_scan_events.get(scan_id),
+            input_preview=image_url[:200],
+        )
 
 
 # ── POST /api/scan/voice ────────────────────────────────────
@@ -124,6 +184,8 @@ async def scan_voice(
     audio_url: Optional[str] = Form(None),
 ):
     """Submit a voice recording for fraud analysis."""
+    from services import cache_service
+
     if not audio and not audio_url:
         raise HTTPException(400, "Provide audio file or audio_url")
 
@@ -131,22 +193,34 @@ async def scan_voice(
     _scans[scan_id] = {"status": "processing", "type": "voice"}
     _emit(scan_id, "scan_started", {"scan_id": scan_id, "type": "voice"})
 
-    # Save uploaded file
+    # Compute content hash for caching
+    content_hash = None
     audio_path = ""
     if audio:
+        audio_bytes = await audio.read()
+        content_hash = cache_service.hash_image_bytes(audio_bytes)  # works for any bytes
         ext = os.path.splitext(audio.filename or ".wav")[1]
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-        tmp.write(await audio.read())
+        tmp.write(audio_bytes)
         tmp.close()
         audio_path = tmp.name
+    elif audio_url:
+        content_hash = cache_service.hash_text(audio_url)
 
-    asyncio.create_task(_run_voice_pipeline(scan_id, audio_path or audio_url or ""))
+    # Check cache
+    if content_hash:
+        cached = cache_service.get_cached(content_hash)
+        if cached:
+            asyncio.create_task(_replay_cached(scan_id, cached))
+            return ScanOut(scan_id=scan_id, status="processing")
+
+    asyncio.create_task(_run_voice_pipeline(scan_id, audio_path or audio_url or "", content_hash))
     return ScanOut(scan_id=scan_id, status="processing")
 
 
-async def _run_voice_pipeline(scan_id: str, audio_path: str):
+async def _run_voice_pipeline(scan_id: str, audio_path: str, content_hash: str | None = None):
     """Full voice scan pipeline: Modulate → GLiNER → Tavily → Yutori → verdict."""
-    from services import modulate_service, gliner_service, tavily_service, yutori_service, openai_service, neo4j_service
+    from services import modulate_service, gliner_service, tavily_service, yutori_service, openai_service, neo4j_service, cache_service
 
     # Step 1: Modulate/fallback voice analysis
     _emit(scan_id, "step", {"step": "voice_analysis", "status": "running"})
@@ -193,14 +267,23 @@ async def _run_voice_pipeline(scan_id: str, audio_path: str):
     for ent in entities:
         await neo4j_service.add_entity_to_scan(scan_id, ent.get("text", ""), ent.get("label", ""))
 
-    _scans[scan_id] = {
+    final_result = {
         "status": "complete",
         "type": "voice",
         "verdict": verdict,
         "voice": voice,
         "entities": entities,
     }
+    _scans[scan_id] = final_result
     _emit(scan_id, "complete", {"scan_id": scan_id})
+
+    # Cache the result
+    if content_hash:
+        cache_service.store_result(
+            content_hash, "voice", final_result,
+            sse_events=_scan_events.get(scan_id),
+            input_preview=audio_path[:200],
+        )
 
     # Cleanup temp file
     if os.path.exists(audio_path):
@@ -212,6 +295,8 @@ async def _run_voice_pipeline(scan_id: str, audio_path: str):
 @router.post("/scan/text", response_model=ScanOut)
 async def scan_text(body: dict):
     """Submit raw text (email body, SMS, etc.) for scam analysis."""
+    from services import cache_service
+
     text = body.get("text", "")
     if not text:
         raise HTTPException(400, "Provide text content")
@@ -220,13 +305,20 @@ async def scan_text(body: dict):
     _scans[scan_id] = {"status": "processing", "type": "text"}
     _emit(scan_id, "scan_started", {"scan_id": scan_id, "type": "text"})
 
-    asyncio.create_task(_run_text_pipeline(scan_id, text))
+    # Check cache
+    content_hash = cache_service.hash_text(text)
+    cached = cache_service.get_cached(content_hash)
+    if cached:
+        asyncio.create_task(_replay_cached(scan_id, cached))
+        return ScanOut(scan_id=scan_id, status="processing")
+
+    asyncio.create_task(_run_text_pipeline(scan_id, text, content_hash))
     return ScanOut(scan_id=scan_id, status="processing")
 
 
-async def _run_text_pipeline(scan_id: str, text: str):
+async def _run_text_pipeline(scan_id: str, text: str, content_hash: str | None = None):
     """Text-only pipeline: GLiNER → classify → Tavily → Yutori → verdict."""
-    from services import gliner_service, tavily_service, yutori_service, openai_service, neo4j_service
+    from services import gliner_service, tavily_service, yutori_service, openai_service, neo4j_service, cache_service
 
     # Step 1: GLiNER extraction + classification in parallel
     _emit(scan_id, "step", {"step": "gliner_extract", "status": "running"})
@@ -266,13 +358,22 @@ async def _run_text_pipeline(scan_id: str, text: str):
     for ent in entities:
         await neo4j_service.add_entity_to_scan(scan_id, ent.get("text", ""), ent.get("label", ""))
 
-    _scans[scan_id] = {
+    final_result = {
         "status": "complete",
         "type": "text",
         "verdict": verdict,
         "entities": entities,
     }
+    _scans[scan_id] = final_result
     _emit(scan_id, "complete", {"scan_id": scan_id})
+
+    # Cache the result
+    if content_hash:
+        cache_service.store_result(
+            content_hash, "text", final_result,
+            sse_events=_scan_events.get(scan_id),
+            input_preview=text[:200],
+        )
 
 
 # ── GET /api/scan/:id/status — SSE stream ──────────────────
@@ -325,3 +426,20 @@ async def list_scans():
     # Most recent first
     scans.reverse()
     return {"scans": scans}
+
+
+# ── Cache management ────────────────────────────────────────
+
+@router.get("/cache/stats")
+async def get_cache_stats():
+    """Get cache statistics."""
+    from services import cache_service
+    return cache_service.cache_stats()
+
+
+@router.delete("/cache")
+async def clear_all_cache():
+    """Clear all cached scan results."""
+    from services import cache_service
+    deleted = cache_service.clear_cache()
+    return {"deleted": deleted, "message": f"Cleared {deleted} cached entries"}
