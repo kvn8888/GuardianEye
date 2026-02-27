@@ -1,0 +1,69 @@
+Here are some example scam emails for educational/awareness purposes:
+
+---
+
+**Email 1: Fake Bank Alert**
+
+> **From:** security-alert@totallynotabank-example.com
+> **Subject:** ⚠️ Urgent: Your Account Has Been Compromised!
+>
+> Dear Valued Customer,
+>
+> We have detected suspicious activity on your account. Your account will be suspended within 24 hours unless you verify your identity immediately.
+>
+> Click here to verify: `http://www.fake-example-link-not-real.com/verify`
+>
+> Please provide your full name, account number, and password to restore access.
+>
+> Regards,
+> The Security Team, Definitely Real Bank
+>
+> **⚠️ THIS IS A DEMO/EXAMPLE EMAIL FOR EDUCATIONAL PURPOSES ONLY. This is not a real scam. It is designed to help you recognize phishing tactics such as urgency, threats, and requests for personal information.**
+
+---
+
+**Email 2: Lottery/Prize Scam**
+
+> **From:** winner-notification@fake-lottery-example.com
+> **Subject:** 🎉 Congratulations! You've Won $5,000,000!
+>
+> Dear Lucky Winner,
+>
+> Your email address was randomly selected in our International Online Lottery draw. You have won the grand prize of $5,000,000 USD!
+>
+> To claim your winnings, please send us:
+> - Your full name
+> - Home address
+> - A processing fee of $250 via wire transfer
+>
+> Contact our claims agent: Mr. John Fakename at `claims@example-not-real-lottery.com`
+>
+> Act now — this offer expires in 48 hours!
+>
+> **⚠️ THIS IS A DEMO/EXAMPLE EMAIL FOR EDUCATIONAL PURPOSES ONLY. Real lottery scams ask for upfront fees and personal details. You cannot win a lottery you never entered.**
+
+---
+
+**Email 3: Tech Support Scam**
+
+> **From:** support@not-a-real-techcompany-example.com
+> **Subject:** Your Computer Has Been Infected — Immediate Action Required
+>
+> Dear User,
+>
+> Our system has detected 47 viruses on your device. Your personal files, passwords, and banking information are at risk.
+>
+> Call our certified technicians immediately at **1-800-FAKE-000** or download our security tool at `http://www.example-fake-antivirus.com/download`
+>
+> Failure to act within 2 hours may result in permanent data loss.
+>
+> Best regards,
+> Global Tech Support Team
+>
+> **⚠️ THIS IS A DEMO/EXAMPLE EMAIL FOR EDUCATIONAL PURPOSES ONLY. Legitimate companies do not send unsolicited virus warnings via email or ask you to call unknown numbers.**
+
+---
+
+**Key red flags to watch for in real scams:**
+
+Urgency and threats ("act now or else"), requests for personal/financial information, too-good-to-be-true offers, generic greetings ("Dear Customer"), suspicious sender addresses, and unsolicited attachments or links.
