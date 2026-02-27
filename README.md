@@ -14,12 +14,14 @@ User submits screenshot / voice recording / text
 │  2. GLiNER — extracts entities (phones, URLs, $$$)  │
 │  3. Tavily — searches scam databases (fast, ~2s)    │
 │  4. Yutori Research — deep investigation (~60s)     │
-│  5. OpenAI — synthesizes verdict + explanation      │
+│  5. Verdict Engine — synthesizes all signals         │
 │  6. Neo4j — maps scam network (entities → reports)  │
 └─────────────────────────────────────────────────────┘
   ↓
 Verdict: RED / YELLOW / GREEN + confidence + findings
 ```
+
+The verdict engine uses **OpenAI GPT-4o-mini** when an API key is provided, or a **rule-based scoring system** as the default fallback. The rule-based engine scores entity patterns (threat language, deadlines, suspicious URLs) from all upstream signals.
 
 ## Quick Start
 
@@ -52,7 +54,7 @@ cd ../backend && python main.py  # serves API + frontend on :8000
 
 | Service | Env Var | Purpose | Get it at |
 |---------|---------|---------|-----------|
-| OpenAI | `OPENAI_API_KEY` | Verdict synthesis, claim decomposition | platform.openai.com |
+| OpenAI *(optional)* | `OPENAI_API_KEY` | Enhanced verdict synthesis (GPT-4o-mini) | platform.openai.com |
 | Yutori | `YUTORI_API_KEY` | Deep autonomous research agents | platform.yutori.com |
 | Fastino/GLiNER | `FASTINO_API_KEY` | Entity extraction (phones, URLs, companies) | labs.fastino.ai |
 | Reka | `REKA_API_KEY` | Vision — read text from screenshots | platform.reka.ai |
@@ -142,7 +144,7 @@ Set all env vars in the Render dashboard. The backend serves the built frontend 
 
 - **Backend**: Python 3.11+, FastAPI, Uvicorn
 - **Frontend**: React 19, TypeScript, Vite, Tailwind CSS, Shadcn/ui
-- **AI**: OpenAI (GPT-4o-mini), Yutori Research, Fastino/GLiNER, Reka Vision, Modulate
+- **AI**: Yutori Research, Fastino/GLiNER, Reka Vision, Modulate, OpenAI (optional)
 - **Search**: Tavily
 - **Graph**: Neo4j Aura
 - **Cache**: SQLite + Turso (optional cloud sync)
