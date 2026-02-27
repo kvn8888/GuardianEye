@@ -239,6 +239,16 @@ export async function getScanGraph(scanId: string): Promise<BackendGraphData> {
   }
 }
 
+export async function getGraphOverview(): Promise<BackendGraphData> {
+  try {
+    const res = await fetch(`${API_BASE}/api/graph/overview`);
+    if (!res.ok) return { nodes: [], edges: [] };
+    return res.json();
+  } catch {
+    return { nodes: [], edges: [] };
+  }
+}
+
 // ── Threats + Scouting ─────────────────────────────────────
 
 export async function getRecentThreats(limit = 20): Promise<{ threats: BackendThreat[]; count: number }> {
@@ -277,4 +287,15 @@ export async function alertFamily(scanId: string, message: string): Promise<any>
     body: JSON.stringify({ scan_id: scanId, message }),
   });
   return res.json();
+}
+
+export async function checkHealth(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.status === "ok";
+  } catch {
+    return false;
+  }
 }

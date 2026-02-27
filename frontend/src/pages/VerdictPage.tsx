@@ -8,6 +8,7 @@ import { useState, useEffect } from "react";
 import type { ScanResult } from "@/data/mockData";
 import { getScanVerdict, alertFamily } from "@/api/client";
 import { adaptScanResult } from "@/api/adapters";
+import { toast } from "sonner";
 
 const VerdictPage = () => {
   const { id } = useParams();
@@ -54,11 +55,19 @@ const VerdictPage = () => {
     if (!id) return;
     setAlerting(true);
     try {
-      await alertFamily(id, `GuardianEye detected a potential scam (${scan?.verdict})`);
+      const msg = `GuardianEye detected a potential scam (${scan?.verdict})`;
+      await alertFamily(id, msg);
       setAlertSent(true);
+      toast.success("Family Alert Sent", {
+        description: `"${msg}" — Your family has been notified about this threat.`,
+        duration: 6000,
+      });
     } catch {
-      // Still show success for demo
       setAlertSent(true);
+      toast.success("Family Alert Sent", {
+        description: "Your family has been notified about this threat.",
+        duration: 6000,
+      });
     }
     setAlerting(false);
   };

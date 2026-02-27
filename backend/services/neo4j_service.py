@@ -208,6 +208,45 @@ async def get_entity_network(entity_value: str) -> dict:
         return {"nodes": nodes, "edges": edges, "total_reports": total}
 
 
+async def get_full_network(limit: int = 50) -> dict:
+    """Return an overview subgraph of the most-connected entities and their reports."""
+    driver = _get_driver()
+    if not driver:
+        return {"nodes": [], "edges": []}
+    async with driver.session() as session:
+        result = await session.run(
+            """MATCH (e)<-[rel:CONTAINS]-(r:ScamReport)
+            WITH e, collect(DISTINCT r) AS reports, count(DISTINCT r) AS cnt
+            ORDER BY cnt DESC
+            LIMIT $limit
+            UNWIND reports AS r
+            RETURN e.value AS entity, labels(e)[0] AS entityType,
+                   r.scanId AS scanId, r.type AS scanType, r.verdict AS verdict,
+                   type(rel) AS relType""",
+            limit=limit,
+        )
+        nodes_map: dict[str, dict] = {}
+        edges: list[dict] = []
+        async for rec in result:
+            eid = rec["entity"]
+            sid = rec["scanId"]
+            if eid and eid not in nodes_map:
+                nodes_map[eid] = {
+                    "id": eid, "label": eid,
+                    "type": rec.get("entityType", "Entity"),
+                }
+            if sid and sid not in nodes_map:
+                nodes_map[sid] = {
+                    "id": sid,
+                    "label": f"{rec.get('scanType', '?')} scan",
+                    "type": "report",
+                    "verdict": rec.get("verdict", "pending"),
+                }
+            if eid and sid:
+                edges.append({"from": sid, "to": eid, "label": "CONTAINS"})
+        return {"nodes": list(nodes_map.values()), "edges": edges}
+
+
 async def get_recent_threats(limit: int = 20) -> list[dict]:
     """Get entities with the most scam reports (for threat dashboard)."""
     driver = _get_driver()

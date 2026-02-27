@@ -4,7 +4,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { NetworkNode } from "@/data/mockData";
-import { getEntityNetwork } from "@/api/client";
+import { getEntityNetwork, getGraphOverview } from "@/api/client";
 import { adaptGraphToNodes } from "@/api/adapters";
 
 const nodeColors: Record<string, string> = {
@@ -31,14 +31,17 @@ const NetworkPage = () => {
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
 
-  // Fetch real network data if entity param is provided
+  // Fetch real network data — entity-specific or full overview
   useEffect(() => {
-    if (!entityParam) return;
-    getEntityNetwork(entityParam).then((graph) => {
+    const load = entityParam
+      ? getEntityNetwork(entityParam)
+      : getGraphOverview();
+
+    load.then((graph) => {
       if (graph.nodes && graph.nodes.length > 0) {
         const adapted = adaptGraphToNodes(graph);
         setNodes(adapted);
-        setTotalReports(graph.total_reports || 0);
+        setTotalReports(graph.total_reports || graph.nodes.filter((n: any) => n.type === "report").length);
       }
     });
   }, [entityParam]);
@@ -179,7 +182,7 @@ const NetworkPage = () => {
           <p className="text-lg text-muted-foreground">
             {entityParam
               ? `${totalReports} reports connected to "${entityParam}". Each dot is a piece of a scam.`
-              : `${nodes.length} connected entities. Each dot is a piece of a scam. See how they connect.`}
+              : `${totalReports} scam reports in the network. Each dot is a piece of a scam. See how they connect.`}
           </p>
         </div>
 

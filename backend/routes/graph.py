@@ -5,12 +5,10 @@ from services import neo4j_service
 router = APIRouter()
 
 
-@router.get("/graph/{scan_id}")
-async def get_scan_graph(scan_id: str):
-    """Get the Neo4j subgraph for a specific scan (for visualization)."""
-    graph = await neo4j_service.get_scan_graph(scan_id)
-    if not graph["nodes"]:
-        raise HTTPException(404, "Scan not found in graph")
+@router.get("/graph/overview")
+async def get_graph_overview():
+    """Full network overview — top entities and their connected reports."""
+    graph = await neo4j_service.get_full_network()
     return graph
 
 
@@ -21,6 +19,15 @@ async def get_entity_network(entity_value: str):
     """
     network = await neo4j_service.get_entity_network(entity_value)
     return network
+
+
+@router.get("/graph/{scan_id}")
+async def get_scan_graph(scan_id: str):
+    """Get the Neo4j subgraph for a specific scan (for visualization)."""
+    graph = await neo4j_service.get_scan_graph(scan_id)
+    if not graph["nodes"]:
+        raise HTTPException(404, "Scan not found in graph")
+    return graph
 
 
 @router.get("/threats/recent")

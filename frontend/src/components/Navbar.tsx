@@ -1,6 +1,7 @@
 import { NavLink } from "@/components/NavLink";
 import { Shield, Menu, X } from "lucide-react";
 import { useState } from "react";
+import { useBackendStatus } from "@/hooks/use-backend-status";
 
 const GuardianEyeLogo = () => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 72" fill="none" className="h-12 w-auto">
@@ -38,8 +39,28 @@ const navItems = [
   { to: "/about", label: "About" },
 ];
 
+const StatusBadge = ({ connected }: { connected: boolean | null }) => {
+  if (connected === null) return null;
+  const dotColor = connected ? "bg-green-400" : "bg-red-400";
+  const solidColor = connected ? "bg-green-500" : "bg-red-500";
+  const textColor = connected ? "text-green-600" : "text-red-500";
+  const label = connected ? "LIVE MONITORING" : "DISCONNECTED";
+  return (
+    <div className="flex items-center gap-2">
+      <span className="relative flex h-2.5 w-2.5">
+        {connected && (
+          <span className={`animate-pulse-live absolute inline-flex h-full w-full rounded-full ${dotColor} opacity-75`} />
+        )}
+        <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${solidColor}`} />
+      </span>
+      <span className={`text-sm font-semibold ${textColor}`}>{label}</span>
+    </div>
+  );
+};
+
 const Navbar = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const connected = useBackendStatus();
 
   return (
     <nav className="sticky top-0 z-50 bg-card/95 backdrop-blur-sm border-b border-border">
@@ -62,11 +83,7 @@ const Navbar = () => {
               </NavLink>
             ))}
             <div className="flex items-center gap-2 ml-4 pl-4 border-l border-border">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-pulse-live absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
-              </span>
-              <span className="text-sm font-semibold text-green-600">LIVE MONITORING</span>
+              <StatusBadge connected={connected} />
             </div>
           </div>
 
@@ -94,11 +111,7 @@ const Navbar = () => {
               </NavLink>
             ))}
             <div className="flex items-center gap-2 px-4 pt-2">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-pulse-live absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
-              </span>
-              <span className="text-sm font-semibold text-green-600">LIVE MONITORING</span>
+              <StatusBadge connected={connected} />
             </div>
           </div>
         )}
