@@ -106,6 +106,26 @@ function mapNodeType(type: string): "phone" | "url" | "company" | "report" {
   return "report";
 }
 
+// ── Neo4j DateTime Helper ──────────────────────────────────
+
+function formatNeo4jDateTime(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  // Neo4j driver returns DateTime objects with _DateTime__date and _DateTime__time
+  const dt = value as Record<string, unknown>;
+  if (dt._DateTime__date && dt._DateTime__time) {
+    const d = dt._DateTime__date as Record<string, { low?: number }>;
+    const t = dt._DateTime__time as Record<string, { low?: number }>;
+    const year = d.year?.low ?? d.year;
+    const month = String(d.month?.low ?? d.month).padStart(2, "0");
+    const day = String(d.day?.low ?? d.day).padStart(2, "0");
+    const hour = String(t.hour?.low ?? t.hour ?? 0).padStart(2, "0");
+    const minute = String(t.minute?.low ?? t.minute ?? 0).padStart(2, "0");
+    return `${year}-${month}-${day} ${hour}:${minute}`;
+  }
+  return String(value);
+}
+
 // ── Threat Feed Adapter ────────────────────────────────────
 
 export function adaptThreatsToFeed(threats: BackendThreat[]): ThreatFeedItem[] {
@@ -113,7 +133,7 @@ export function adaptThreatsToFeed(threats: BackendThreat[]): ThreatFeedItem[] {
     id: `t-${i}`,
     type: mapEntityTypeToThreatType(t.entityType),
     source: "GuardianEye Network",
-    time: t.firstSeen || "Recently",
+    time: formatNeo4jDateTime(t.firstSeen) || "Recently",
     severity: (t.reports > 10 ? "high" : t.reports > 3 ? "medium" : "low") as "high" | "medium" | "low",
     description: `${t.entity} — reported ${t.reports} times across the scam network`,
   }));

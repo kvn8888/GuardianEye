@@ -212,21 +212,22 @@ async def get_full_network(limit: int = 50) -> dict:
     """Return an overview subgraph of the most-connected entities and their reports."""
     driver = _get_driver()
     if not driver:
-        return {"nodes": [], "edges": []}
+        return {"nodes": [], "edges": [], "total_reports": 0}
     async with driver.session() as session:
+        # Get the top entities by connection count, plus their linked reports
         result = await session.run(
-            """MATCH (e)<-[rel:CONTAINS]-(r:ScamReport)
-            WITH e, collect(DISTINCT r) AS reports, count(DISTINCT r) AS cnt
+            """MATCH (e)<-[:CONTAINS]-(r:ScamReport)
+            WITH e, count(DISTINCT r) AS cnt
             ORDER BY cnt DESC
             LIMIT $limit
-            UNWIND reports AS r
-            RETURN e.value AS entity, labels(e)[0] AS entityType,
-                   r.scanId AS scanId, r.type AS scanType, r.verdict AS verdict,
-                   type(rel) AS relType""",
+            MATCH (e)<-[:CONTAINS]-(r:ScamReport)
+            RETURN DISTINCT e.value AS entity, labels(e)[0] AS entityType,
+                   r.scanId AS scanId, r.type AS scanType, r.verdict AS verdict""",
             limit=limit,
         )
         nodes_map: dict[str, dict] = {}
         edges: list[dict] = []
+        report_ids: set[str] = set()
         async for rec in result:
             eid = rec["entity"]
             sid = rec["scanId"]
@@ -242,9 +243,10 @@ async def get_full_network(limit: int = 50) -> dict:
                     "type": "report",
                     "verdict": rec.get("verdict", "pending"),
                 }
+                report_ids.add(sid)
             if eid and sid:
                 edges.append({"from": sid, "to": eid, "label": "CONTAINS"})
-        return {"nodes": list(nodes_map.values()), "edges": edges}
+        return {"nodes": list(nodes_map.values()), "edges": edges, "total_reports": len(report_ids)}
 
 
 async def get_recent_threats(limit: int = 20) -> list[dict]:
