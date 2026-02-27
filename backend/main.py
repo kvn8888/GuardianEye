@@ -42,6 +42,7 @@ app.include_router(scout_router, prefix="/api")
 
 
 @app.get("/")
+@app.head("/")
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "guardianeye"}
