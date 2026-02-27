@@ -1,18 +1,19 @@
 """Fastino / GLiNER2 — Structured entity extraction.
 
-VALIDATED:
-  API endpoint: POST https://api.fastino.ai/gliner-2
+VALIDATED (live-tested Feb 2026):
+  API endpoint: POST https://api.pioneer.ai/gliner-2
+  Auth: X-API-Key header
   API key from: https://labs.fastino.ai
-  Tasks: extract_entities, classify_text, extract_json
-  Local fallback: pip install gliner2, GLiNER2.from_pretrained("fastino/gliner2-base-v1")
-  Pioneer fine-tuning API: https://api.pioneer.ai
+  Tasks: extract_entities, classify_text
+  Response: {"result": {"entities": {"label": ["value", ...]}}, "token_usage": N}
+  Regex fallback for when API is unavailable.
 """
 import os
 import httpx
 import json
 
 FASTINO_API_KEY = os.getenv("FASTINO_API_KEY", "")
-FASTINO_API_URL = "https://api.fastino.ai/gliner-2"
+FASTINO_API_URL = "https://api.pioneer.ai/gliner-2"
 
 
 async def extract_scam_entities(text: str) -> dict:
@@ -20,34 +21,31 @@ async def extract_scam_entities(text: str) -> dict:
     if not FASTINO_API_KEY:
         return _mock_entities(text)
 
+    labels = [
+        "phone_number", "url", "company_name", "dollar_amount",
+        "case_number", "personal_info_request", "deadline",
+        "government_agency", "threat_language", "email_address",
+    ]
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             FASTINO_API_URL,
             headers={
-                "Authorization": f"Bearer {FASTINO_API_KEY}",
+                "X-API-Key": FASTINO_API_KEY,
                 "Content-Type": "application/json",
             },
             json={
                 "task": "extract_entities",
                 "text": text[:8000],
-                "schema": [
-                    "phone_number",
-                    "url",
-                    "company_name",
-                    "dollar_amount",
-                    "case_number",
-                    "personal_info_request",
-                    "deadline",
-                    "government_agency",
-                    "threat_language",
-                    "email_address",
-                ],
+                "schema": labels,
             },
         )
         if resp.status_code != 200:
             print(f"⚠  GLiNER API error {resp.status_code}: {resp.text}")
             return _mock_entities(text)
-        return resp.json()
+
+        raw = resp.json()
+        # Pioneer returns: {"result": {"entities": {"label": ["val", ...]}}, "token_usage": N}
+        return _normalize_pioneer_response(raw)
 
 
 async def classify_scam_type(text: str) -> dict:
@@ -59,7 +57,7 @@ async def classify_scam_type(text: str) -> dict:
         resp = await client.post(
             FASTINO_API_URL,
             headers={
-                "Authorization": f"Bearer {FASTINO_API_KEY}",
+                "X-API-Key": FASTINO_API_KEY,
                 "Content-Type": "application/json",
             },
             json={
@@ -93,7 +91,7 @@ async def classify_evidence_relevance(claim_text: str, evidence_text: str) -> di
         resp = await client.post(
             FASTINO_API_URL,
             headers={
-                "Authorization": f"Bearer {FASTINO_API_KEY}",
+                "X-API-Key": FASTINO_API_KEY,
                 "Content-Type": "application/json",
             },
             json={
@@ -110,6 +108,30 @@ async def classify_evidence_relevance(claim_text: str, evidence_text: str) -> di
         if resp.status_code != 200:
             return {"predicted_class": "unknown", "confidence": 0.0}
         return resp.json()
+
+
+def _normalize_pioneer_response(raw: dict) -> dict:
+    """Convert Pioneer API response to flat entity list.
+
+    Pioneer returns: {"result": {"entities": {"label": ["val1", "val2"]}}, "token_usage": N}
+    We normalize to: {"entities": [{"text": "val1", "label": "label", "score": 0.9}, ...]}
+    """
+    entities = []
+    result = raw.get("result", {})
+    entity_dict = result.get("entities", {})
+
+    for label, values in entity_dict.items():
+        if isinstance(values, list):
+            for val in values:
+                entities.append({"text": val, "label": label, "score": 0.9})
+        elif isinstance(values, str):
+            entities.append({"text": values, "label": label, "score": 0.9})
+
+    return {
+        "entities": entities,
+        "token_usage": raw.get("token_usage", 0),
+        "source": "pioneer-gliner2",
+    }
 
 
 def _mock_entities(text: str) -> dict:

@@ -1,11 +1,13 @@
 """GuardianEye — Multimodal Scam Detection Agent"""
 import os
+from pathlib import Path
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-load_dotenv()
+# Load .env from project root (one level up from backend/)
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from routes.scan import router as scan_router
 from routes.graph import router as graph_router

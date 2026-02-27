@@ -64,7 +64,11 @@ def list_active_scouts() -> list:
     client = _get_client()
     if not client:
         return []
-    return client.scouts.list(status="active")
+    result = client.scouts.list(status="active")
+    # SDK returns {"scouts": [...], "total": N, ...}
+    if isinstance(result, dict):
+        return result.get("scouts", [])
+    return result
 
 
 def get_scout_updates(scout_id: str, limit: int = 20) -> list:

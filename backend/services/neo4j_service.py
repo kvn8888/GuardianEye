@@ -19,6 +19,9 @@ def _get_driver():
     if not uri or not pw:
         return None
     if _driver is None:
+        # Neo4j Aura may need +ssc:// instead of +s:// for self-signed certs
+        if uri.startswith("neo4j+s://"):
+            uri = uri.replace("neo4j+s://", "neo4j+ssc://")
         _driver = AsyncGraphDatabase.driver(uri, auth=(user, pw))
     return _driver
 
