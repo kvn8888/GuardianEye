@@ -3,8 +3,10 @@ import os
 from pathlib import Path
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 # Load .env from project root (one level up from backend/)
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
@@ -41,11 +43,39 @@ app.include_router(graph_router, prefix="/api")
 app.include_router(scout_router, prefix="/api")
 
 
-@app.get("/")
-@app.head("/")
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "guardianeye"}
+
+
+# ── Serve frontend static files (production) ───────────────
+# In production, the built frontend is at ../frontend/dist
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+
+if FRONTEND_DIR.exists():
+    # Serve assets (JS, CSS, images)
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIR / "assets")), name="assets")
+
+    # Serve root index.html
+    @app.get("/")
+    @app.head("/")
+    async def serve_index():
+        return FileResponse(str(FRONTEND_DIR / "index.html"))
+
+    # Catch-all: serve index.html for SPA routes
+    @app.get("/{path:path}")
+    async def spa_fallback(path: str):
+        # Check if a real file exists in dist/
+        file_path = FRONTEND_DIR / path
+        if file_path.is_file():
+            return FileResponse(str(file_path))
+        # Otherwise serve index.html (SPA client-side routing)
+        return FileResponse(str(FRONTEND_DIR / "index.html"))
+else:
+    @app.get("/")
+    @app.head("/")
+    async def health_root():
+        return {"status": "ok", "service": "guardianeye", "frontend": "not built"}
 
 
 if __name__ == "__main__":
