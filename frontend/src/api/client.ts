@@ -1,8 +1,10 @@
 /**
  * GuardianEye API client — connects the frontend to the FastAPI backend.
- * All API calls go through /api/* which is proxied to localhost:8000 in dev
- * and rewritten via Render in production.
+ * In dev, the Vite proxy rewrites /api/* to localhost:8000.
+ * In production, API_BASE points to the deployed backend on Render.
  */
+
+const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 
 // ── Types from the backend ─────────────────────────────────
 
@@ -50,7 +52,7 @@ export interface BackendThreat {
 export async function submitImageScan(file: File): Promise<{ scan_id: string }> {
   const fd = new FormData();
   fd.append("image", file);
-  const res = await fetch("/api/scan/image", { method: "POST", body: fd });
+  const res = await fetch(`${API_BASE}/api/scan/image`, { method: "POST", body: fd });
   if (!res.ok) throw new Error(`Image scan failed: ${res.status}`);
   return res.json();
 }
@@ -58,13 +60,13 @@ export async function submitImageScan(file: File): Promise<{ scan_id: string }> 
 export async function submitVoiceScan(file: File): Promise<{ scan_id: string }> {
   const fd = new FormData();
   fd.append("audio", file);
-  const res = await fetch("/api/scan/voice", { method: "POST", body: fd });
+  const res = await fetch(`${API_BASE}/api/scan/voice`, { method: "POST", body: fd });
   if (!res.ok) throw new Error(`Voice scan failed: ${res.status}`);
   return res.json();
 }
 
 export async function submitTextScan(text: string): Promise<{ scan_id: string }> {
-  const res = await fetch("/api/scan/text", {
+  const res = await fetch(`${API_BASE}/api/scan/text`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
@@ -90,7 +92,7 @@ export function subscribeScanStatus(
   onComplete: () => void,
   onError?: (err: Event) => void,
 ): () => void {
-  const sse = new EventSource(`/api/scan/${scanId}/status`);
+  const sse = new EventSource(`${API_BASE}/api/scan/${scanId}/status`);
 
   const eventTypes = [
     "scan_started", "step", "reka_complete", "voice_complete",
@@ -131,7 +133,7 @@ export function subscribeScanStatus(
 
 export async function getScanVerdict(scanId: string): Promise<BackendScanResult | null> {
   try {
-    const res = await fetch(`/api/scan/${scanId}/verdict`);
+    const res = await fetch(`${API_BASE}/api/scan/${scanId}/verdict`);
     if (!res.ok) return null;
     return res.json();
   } catch {
@@ -141,7 +143,7 @@ export async function getScanVerdict(scanId: string): Promise<BackendScanResult 
 
 export async function listScans(): Promise<BackendScanResult[]> {
   try {
-    const res = await fetch("/api/scans");
+    const res = await fetch(`${API_BASE}/api/scans`);
     if (!res.ok) return [];
     const data = await res.json();
     return data.scans || [];
@@ -154,7 +156,7 @@ export async function listScans(): Promise<BackendScanResult[]> {
 
 export async function getEntityNetwork(entity: string): Promise<BackendGraphData> {
   try {
-    const res = await fetch(`/api/graph/network/${encodeURIComponent(entity)}`);
+    const res = await fetch(`${API_BASE}/api/graph/network/${encodeURIComponent(entity)}`);
     if (!res.ok) return { nodes: [], edges: [] };
     return res.json();
   } catch {
@@ -164,7 +166,7 @@ export async function getEntityNetwork(entity: string): Promise<BackendGraphData
 
 export async function getScanGraph(scanId: string): Promise<BackendGraphData> {
   try {
-    const res = await fetch(`/api/graph/${scanId}`);
+    const res = await fetch(`${API_BASE}/api/graph/${scanId}`);
     if (!res.ok) return { nodes: [], edges: [] };
     return res.json();
   } catch {
@@ -176,7 +178,7 @@ export async function getScanGraph(scanId: string): Promise<BackendGraphData> {
 
 export async function getRecentThreats(limit = 20): Promise<{ threats: BackendThreat[]; count: number }> {
   try {
-    const res = await fetch(`/api/threats/recent?limit=${limit}`);
+    const res = await fetch(`${API_BASE}/api/threats/recent?limit=${limit}`);
     if (!res.ok) return { threats: [], count: 0 };
     return res.json();
   } catch {
@@ -186,7 +188,7 @@ export async function getRecentThreats(limit = 20): Promise<{ threats: BackendTh
 
 export async function getScoutStatus(): Promise<{ active_scouts: any[]; count: number }> {
   try {
-    const res = await fetch("/api/scout/status");
+    const res = await fetch(`${API_BASE}/api/scout/status`);
     if (!res.ok) return { active_scouts: [], count: 0 };
     return res.json();
   } catch {
@@ -195,7 +197,7 @@ export async function getScoutStatus(): Promise<{ active_scouts: any[]; count: n
 }
 
 export async function createScout(): Promise<any> {
-  const res = await fetch("/api/scout/create", {
+  const res = await fetch(`${API_BASE}/api/scout/create`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({}),
@@ -204,7 +206,7 @@ export async function createScout(): Promise<any> {
 }
 
 export async function alertFamily(scanId: string, message: string): Promise<any> {
-  const res = await fetch("/api/alert/family", {
+  const res = await fetch(`${API_BASE}/api/alert/family`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ scan_id: scanId, message }),

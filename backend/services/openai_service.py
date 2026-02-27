@@ -1,22 +1,25 @@
-"""OpenAI — Verdict synthesis.
+"""Verdict synthesis — Gemini 3 Flash.
 
 Combines signals from Reka Vision, Modulate/Whisper, GLiNER entities,
 Tavily reputation, and Yutori research into a final scam verdict.
+
+Uses Google Gemini 3 Flash (gemini-3-flash-preview) for LLM-powered
+verdict synthesis, with a rule-based scoring fallback.
 """
 import os
 import json
-from openai import OpenAI
+from google import genai
 
 _client = None
 
 
-def _get_client() -> OpenAI | None:
+def _get_client():
     global _client
-    key = os.getenv("OPENAI_API_KEY")
+    key = os.getenv("GEMINI_API_KEY")
     if not key:
         return None
     if _client is None:
-        _client = OpenAI(api_key=key)
+        _client = genai.Client(api_key=key)
     return _client
 
 
@@ -36,7 +39,7 @@ def synthesize_verdict(
             visual_analysis, voice_analysis, entities, tavily_results
         )
 
-    # Build context for GPT
+    # Build context
     context_parts = []
 
     if visual_analysis:
@@ -64,26 +67,18 @@ def synthesize_verdict(
 
     combined_context = "\n\n".join(context_parts)
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an expert fraud analyst protecting seniors from scams. "
-                        "Synthesize all available signals into a clear verdict. "
-                        "Be definitive — seniors need clear advice, not hedging. "
-                        "Write explanations a 75-year-old can understand."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": f"""Based on all the following evidence, determine if this is a scam.
+    system_prompt = (
+        "You are an expert fraud analyst protecting seniors from scams. "
+        "Synthesize all available signals into a clear verdict. "
+        "Be definitive — seniors need clear advice, not hedging. "
+        "Write explanations a 75-year-old can understand."
+    )
+
+    user_prompt = f"""Based on all the following evidence, determine if this is a scam.
 
 {combined_context}
 
-Return JSON:
+Return ONLY valid JSON (no markdown, no code fences):
 {{
   "level": "RED" | "YELLOW" | "GREEN",
   "confidence": 0.0 to 1.0,
@@ -99,19 +94,24 @@ Rules:
 - YELLOW: Suspicious but not certain. Some signals but also some legitimate indicators.
 - GREEN: Appears legitimate. No strong scam indicators found.
 - When in doubt, err toward RED. Better to flag a legitimate message than miss a scam.
-""",
-                },
-            ],
-            response_format={"type": "json_object"},
+"""
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-3-flash-preview",
+            contents=f"{system_prompt}\n\n{user_prompt}",
+            config={
+                "response_mime_type": "application/json",
+            },
         )
 
-        raw = response.choices[0].message.content
+        raw = response.text
         try:
             return json.loads(raw)
         except json.JSONDecodeError:
             return {"level": "YELLOW", "confidence": 0.3, "explanation": raw, "red_flags": []}
     except Exception as e:
-        print(f"⚠  OpenAI verdict failed: {e}, using rule-based fallback")
+        print(f"⚠  Gemini verdict failed: {e}, using rule-based fallback")
         return _rule_based_verdict(
             visual_analysis, voice_analysis, entities, tavily_results
         )

@@ -18,10 +18,11 @@ from routes.scout import router as scout_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if not os.getenv("OPENAI_API_KEY"):
-        print("⚠  OpenAI API key not set — fallback LLM disabled")
+    if not os.getenv("GEMINI_API_KEY"):
+        print("⚠  Gemini API key not set — using rule-based verdict engine")
 
     services = {
+        "Gemini 3 Flash": bool(os.getenv("GEMINI_API_KEY")),
         "Reka Vision": bool(os.getenv("REKA_API_KEY")),
         "Modulate": bool(os.getenv("MODULATE_API_KEY")),
         "Fastino/GLiNER": bool(os.getenv("FASTINO_API_KEY")),
