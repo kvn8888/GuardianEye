@@ -163,7 +163,8 @@ def cache_stats() -> dict:
     total = conn.execute("SELECT COUNT(*) FROM scan_cache").fetchone()[0]
     hits = conn.execute("SELECT SUM(hit_count) FROM scan_cache").fetchone()[0] or 0
     by_type = {}
-    for row in conn.execute("SELECT scan_type, COUNT(*) FROM scan_cache GROUP BY scan_type"):
+    rows = conn.execute("SELECT scan_type, COUNT(*) FROM scan_cache GROUP BY scan_type").fetchall()
+    for row in rows:
         by_type[row[0]] = row[1]
     return {"total_entries": total, "total_hits": hits, "by_type": by_type}
 
