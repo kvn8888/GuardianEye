@@ -44,6 +44,10 @@ def _get_conn():
         )
         _conn.sync()
         print(f"✓ Cache: Turso sync @ {turso_url}")
+    elif turso_url and turso_token:
+        print("! Cache: TURSO_* configured but libsql-experimental is not installed; using local SQLite")
+        _conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+        print(f"✓ Cache: local SQLite @ {DB_PATH}")
     else:
         # Pure local SQLite
         _conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
