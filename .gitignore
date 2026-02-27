@@ -16,3 +16,8 @@ node_modules/
 *.swo
 .DS_Store
 cache.db
+
+# SQLite WAL/SHM files
+backend/cache.db-shm
+backend/cache.db-wal
+backend/cache.db-info
